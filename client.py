@@ -35,6 +35,7 @@ class Client12306:
             urllib.request.HTTPCookieProcessor(self.cookie_jar),
             urllib.request.HTTPSHandler(context=self.ssl_ctx)
         )
+        self._ensure_device_id()
         self.station_map: Dict[str, str] = {}
         self.reverse_station_map: Dict[str, str] = {}
         self.query_path: str = "queryG"
@@ -46,6 +47,30 @@ class Client12306:
             self.cookie_jar.save(ignore_discard=True, ignore_expires=True)
         except Exception:
             pass
+
+    def _ensure_device_id(self):
+        has_device = any(ck.name == 'RAIL_DEVICEID' for ck in self.cookie_jar)
+        if not has_device:
+            import http.cookiejar
+            import time
+            exp_val = int((time.time() + 86400 * 365) * 1000)
+            c_dev = http.cookiejar.Cookie(
+                version=0, name='RAIL_DEVICEID', value='ng8GWpVBAs1dnOxtsAEnQ1EyfbEuCIGetci8OLRrXAtY_grSokW5WZb10aDdNS_Je4KbKlgf3fPtO4cZJGCox4ORGXGZ8Fhcq6TDWW1iuLlaU2kLccvL22V_HBd49idoCqL0dJEbfl3Plhhno73VZqQY5aKeAHHJ',
+                port=None, port_specified=False, domain='kyfw.12306.cn',
+                domain_specified=True, domain_initial_dot=False, path='/',
+                path_specified=True, secure=False, expires=int(time.time() + 86400 * 365),
+                discard=False, comment=None, comment_url=None, rest={'HttpOnly': None}
+            )
+            c_exp = http.cookiejar.Cookie(
+                version=0, name='RAIL_EXPIRATION', value=str(exp_val),
+                port=None, port_specified=False, domain='kyfw.12306.cn',
+                domain_specified=True, domain_initial_dot=False, path='/',
+                path_specified=True, secure=False, expires=int(time.time() + 86400 * 365),
+                discard=False, comment=None, comment_url=None, rest={'HttpOnly': None}
+            )
+            self.cookie_jar.set_cookie(c_dev)
+            self.cookie_jar.set_cookie(c_exp)
+            self._save_cookies()
 
     def _request(self, url: str, method: str = 'GET', data: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None) -> Any:
         req_headers = COMMON_HEADERS.copy()
@@ -416,6 +441,25 @@ class Client12306:
         }
         return self._request(url, method='POST', data=data, headers=headers)
 
+    def send_sms_code(self, username: str, cast_num: str) -> Dict[str, Any]:
+        """
+        Request SMS verification code:
+        cast_num is the last 4 digits of ID card or full ID card number.
+        """
+        url = 'https://kyfw.12306.cn/passport/web/getMessageCode'
+        data = {
+            'appid': 'otn',
+            'username': username,
+            'castNum': cast_num
+        }
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Referer': 'https://kyfw.12306.cn/otn/resources/login.html',
+            'Origin': 'https://kyfw.12306.cn',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+        }
+        return self._request(url, method='POST', data=data, headers=headers)
+
     def query_order_wait_time(self, repeat_submit_token: str, tour_flag: str = 'dc') -> Dict[str, Any]:
         url = f"https://kyfw.12306.cn/otn/confirmPassenger/queryOrderWaitTime?random={int(time.time()*1000)}&tourFlag={tour_flag}&_json_att=&REPEAT_SUBMIT_TOKEN={repeat_submit_token}"
         headers = {
@@ -423,15 +467,173 @@ class Client12306:
         }
         return self._request(url, method='GET', headers=headers)
 
-    def result_order_for_queue(self, order_sequence_no: str, repeat_submit_token: str) -> Dict[str, Any]:
-        url = 'https://kyfw.12306.cn/otn/confirmPassenger/resultOrderForDcQueue'
-        data = {
-            'orderSequence_no': order_sequence_no,
-            '_json_att': '',
-            'REPEAT_SUBMIT_TOKEN': repeat_submit_token
+    def order_ticket(self, train_code: str, train_date: str, from_station: str, to_station: str, seat_type: str = '二等座', passenger_names: Optional[List[str]] = None) -> Dict[str, Any]:
+        """
+        Complete ticket booking workflow for specified train, date, stations, seat, and passengers.
+        """
+        import urllib.parse
+        import re
+        import ast
+
+        # 1. Map seat type to 12306 seat code
+        seat_code_map = {
+            '商务座': '9', '特等座': 'P', '一等座': 'M', '二等座': 'O',
+            '高级软卧': '6', '软卧': '4', '动卧': 'F', '硬卧': '3',
+            '软座': '2', '硬座': '1', '无座': '1'
         }
-        headers = {
-            'Referer': 'https://kyfw.12306.cn/otn/confirmPassenger/initDc',
+        seat_code = seat_code_map.get(seat_type, seat_type)
+
+        # 2. Query tickets to find the target train and secret_str
+        trains = self.query_tickets(train_date, from_station, to_station)
+        target = None
+        for t in trains:
+            if t.get('train_code') == train_code:
+                # If specific stations matched or from_station matches
+                if (from_station in t.get('from_station') or not from_station) and (to_station in t.get('to_station') or not to_station):
+                    target = t
+                    break
+        if not target:
+            # Fallback search by train_code only
+            for t in trains:
+                if t.get('train_code') == train_code:
+                    target = t
+                    break
+        if not target:
+            return {'success': False, 'message': f'未找到 {train_date} 车次 {train_code}'}
+
+        secret_str = urllib.parse.unquote(target['secret_str'])
+
+        # 3. Submit order request
+        submit_res = self.submit_order_request(
+            secret_str=secret_str,
+            train_date=train_date,
+            back_train_date=train_date,
+            tour_flag='dc',
+            purpose_codes='ADULT',
+            from_station_name=target['from_station'],
+            to_station_name=target['to_station']
+        )
+
+        # 4. Request initDc to get globalRepeatSubmitToken and ticketInfo
+        url_init = 'https://kyfw.12306.cn/otn/confirmPassenger/initDc'
+        html = self._request(url_init, method='POST', data={'_json_att': ''}, headers={
+            'Referer': 'https://kyfw.12306.cn/otn/leftTicket/init',
             'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
-        }
-        return self._request(url, method='POST', data=data, headers=headers)
+        })
+        if not html:
+            return {'success': False, 'message': '获取订单确认页面失败'}
+
+        token_match = re.search(r"globalRepeatSubmitToken\s*=\s*'([^']+)'", html)
+        if not token_match:
+            # Check if there is an existing uncompleted order
+            no_comp = self.query_no_complete_order()
+            orders = no_comp.get('data', {}).get('orderDBList', [])
+            if orders:
+                return {'success': False, 'message': '当前已有未完成支付的订单，请先支付或取消原订单后再购买', 'unpaid_order': orders[0].get('sequence_no')}
+            return {'success': False, 'message': '未能解析到订单 Token，请重试'}
+
+        token = token_match.group(1)
+
+        ticket_match = re.search(r"ticketInfoForPassengerForm\s*=\s*({.*?});\s*var", html, re.DOTALL)
+        if not ticket_match:
+            return {'success': False, 'message': '未能解析到车票详情数据'}
+
+        text_py = ticket_match.group(1).replace('null', 'None').replace('true', 'True').replace('false', 'False')
+        ticket_info = ast.literal_eval(text_py)
+
+        left_ticket_str = ticket_info.get('leftTicketStr')
+        key_check_is_change = ticket_info.get('key_check_isChange')
+        train_location = ticket_info.get('train_location')
+        purpose_codes = ticket_info.get('purpose_codes', '00')
+
+        # 5. Build passenger strings
+        passengers = self.get_passengers()
+        if not passengers:
+            # Try auth refresh
+            self.complete_login('')
+            passengers = self.get_passengers()
+        if not passengers:
+            return {'success': False, 'message': '未能获取到乘车人列表'}
+
+        if not passenger_names:
+            passenger_names = ['程文涛']
+
+        selected_passengers = [p for p in passengers if p.get('passenger_name') in passenger_names]
+        if not selected_passengers:
+            return {'success': False, 'message': f'未在常用联系人中找到指定的乘车人: {passenger_names}'}
+
+        p_tickets = []
+        old_ps = []
+        for p in selected_passengers:
+            p_ticket = f"{seat_code},0,1,{p['passenger_name']},1,{p['passenger_id_no']},{p['mobile_no']},N,{p['allEncStr']}"
+            old_p = f"{p['passenger_name']},1,{p['passenger_id_no']},1_"
+            p_tickets.append(p_ticket)
+            old_ps.append(old_p)
+
+        passenger_ticket_str = '_'.join(p_tickets)
+        old_passenger_str = ''.join(old_ps)
+
+        # 6. Check order info
+        res_chk = self.check_order_info(passenger_ticket_str, old_passenger_str, token)
+        if not res_chk or not res_chk.get('data', {}).get('submitStatus'):
+            err = res_chk.get('data', {}).get('errMsg') if res_chk else '订单信息预校验未通过'
+            return {'success': False, 'message': err}
+
+        # 7. Confirm queue
+        res_q = self.confirm_single_for_queue(
+            passenger_ticket_str=passenger_ticket_str,
+            old_passenger_str=old_passenger_str,
+            repeat_submit_token=token,
+            key_check_is_change=key_check_is_change,
+            left_ticket_str=left_ticket_str,
+            train_location=train_location
+        )
+        if not res_q or not res_q.get('data', {}).get('submitStatus'):
+            err = res_q.get('data', {}).get('errMsg') if res_q else '提交排队失败'
+            # If contains unpaid order:
+            if '包含未付款' in str(err):
+                # Query the order id
+                no_comp = self.query_no_complete_order()
+                orders = no_comp.get('data', {}).get('orderDBList', [])
+                if orders:
+                    seq = orders[0].get('sequence_no')
+                    return {'success': True, 'order_id': seq, 'message': '已存在待支付订单', 'order_detail': orders[0]}
+            return {'success': False, 'message': err}
+
+        # 8. Query order wait time until assigned
+        order_id = None
+        for _ in range(20):
+            time.sleep(1)
+            res_wait = self.query_order_wait_time(token)
+            data = res_wait.get('data', {})
+            order_id = data.get('orderId')
+            wait_time = data.get('waitTime')
+            if order_id:
+                break
+            if wait_time == -1 and not order_id:
+                break
+
+        if not order_id:
+            # Fallback to query_no_complete_order
+            no_comp = self.query_no_complete_order()
+            orders = no_comp.get('data', {}).get('orderDBList', [])
+            if orders:
+                order_id = orders[0].get('sequence_no')
+
+        if order_id:
+            # Query order detail
+            no_comp = self.query_no_complete_order()
+            orders = no_comp.get('data', {}).get('orderDBList', [])
+            order_info = orders[0] if orders else {}
+            return {
+                'success': True,
+                'order_id': order_id,
+                'train_code': train_code,
+                'train_date': train_date,
+                'from_station': target['from_station'],
+                'to_station': target['to_station'],
+                'order_info': order_info
+            }
+        else:
+            return {'success': False, 'message': '排队处理超时或未能获取到订单号，请在12306 App查看'}
+
