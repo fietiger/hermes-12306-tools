@@ -1,0 +1,11 @@
+name: 12306_tools
+version: 1.0.0
+description: "Hermes 12306 Railway Tools Plugin — QR login, query tickets, passengers, and booking."
+author: fietiger & Agnes
+kind: backend
+provides_tools:
+  - train_login_qr
+  - train_check_login
+  - train_query_tickets
+  - train_list_passengers
+  - train_order_ticket
