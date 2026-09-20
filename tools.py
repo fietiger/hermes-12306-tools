@@ -33,9 +33,12 @@ def handle_train_login_qr(**kwargs) -> str:
     Generate a new 12306 QR code for login, save image to disk, and return instructions.
     """
     c = get_client()
-    res = c.get_login_qr()
-    if not res.get("image_bytes"):
-        return json.dumps({"success": False, "error": res.get("error", "无法获取12306登录二维码")}, ensure_ascii=False)
+    qr_data = c.create_qr()
+    if not qr_data or qr_data.get("result_code") != "0":
+        return json.dumps({"success": False, "error": qr_data.get("result_message", "无法获取12306登录二维码")}, ensure_ascii=False)
+    
+    uuid = qr_data.get("uuid")
+    image_b64 = qr_data.get("image")
     
     # Save image to web/media accessible path
     qr_dir = "/opt/data/cache/images"
@@ -43,12 +46,11 @@ def handle_train_login_qr(**kwargs) -> str:
     qr_filename = f"12306_login_qr_{int(time.time())}.jpg"
     qr_path = os.path.join(qr_dir, qr_filename)
     
-    with open(qr_path, "wb") as f:
-        f.write(res["image_bytes"])
+    c.save_qr_image(image_b64, qr_path)
         
     return json.dumps({
         "success": True,
-        "uuid": res.get("uuid"),
+        "uuid": uuid,
         "image_path": qr_path,
         "media_marker": f"MEDIA:{qr_path}",
         "message": "请使用「铁路12306」手机 App 扫码并在手机上点击「确认登录」。扫码完成后请回复「我已确认登录」或由系统自动检查。"
@@ -60,8 +62,20 @@ def handle_train_check_login(uuid: Optional[str] = None, **kwargs) -> str:
     Check if the QR code was scanned and confirmed on 12306 App.
     """
     c = get_client()
-    res = c.check_qr_status(uuid=uuid)
-    return json.dumps(res, ensure_ascii=False)
+    if not uuid:
+        return json.dumps({"success": False, "error": "需要传入 uuid 参数"}, ensure_ascii=False)
+    res = c.check_qr(uuid)
+    code = res.get("result_code")
+    if code == "2":
+        uamtk = res.get("uamtk")
+        ok, msg = c.complete_login(uamtk)
+        return json.dumps({"success": ok, "status": "confirmed", "message": msg}, ensure_ascii=False)
+    elif code == "1":
+        return json.dumps({"success": False, "status": "scanned", "message": "已扫码，请在12306 App点击确认登录"}, ensure_ascii=False)
+    elif code == "3":
+        return json.dumps({"success": False, "status": "expired", "message": "二维码已过期，请重新生成"}, ensure_ascii=False)
+    else:
+        return json.dumps({"success": False, "status": "waiting", "message": "等待手机App扫码"}, ensure_ascii=False)
 
 
 def handle_train_query_tickets(
