@@ -356,18 +356,21 @@ class Client12306:
         }
         return self._request(url, method='POST', data=data, headers=headers)
 
-    def confirm_single_for_queue(self, passenger_ticket_str: str, old_passenger_str: str, repeat_submit_token: str, key_check_is_change: str, left_ticket_str: str, train_location: str) -> Dict[str, Any]:
+    def confirm_single_for_queue(self, passenger_ticket_str: str, old_passenger_str: str, repeat_submit_token: str, key_check_is_change: str, left_ticket_str: str, train_location: str, choose_seats: str = '') -> Dict[str, Any]:
         url = 'https://kyfw.12306.cn/otn/confirmPassenger/confirmSingleForQueue'
         data = {
             'passengerTicketStr': passenger_ticket_str,
             'oldPassengerStr': old_passenger_str,
             'randCode': '',
             'purpose_codes': '00',
-            'key_check_is_change': key_check_is_change,
+            'key_check_isChange': key_check_is_change,
             'leftTicketStr': left_ticket_str,
             'train_location': train_location,
-            'choose_seats': '',
+            'choose_seats': choose_seats,
             'seatDetailType': '000',
+            'is_jy': 'N',
+            'is_cj': 'N',
+            'encryptedData': '',
             'whatsSelect': '1',
             'roomType': '00',
             'dwAll': 'N',
@@ -375,7 +378,40 @@ class Client12306:
             'REPEAT_SUBMIT_TOKEN': repeat_submit_token
         }
         headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Referer': 'https://kyfw.12306.cn/otn/confirmPassenger/initDc',
+            'Origin': 'https://kyfw.12306.cn',
+            'Host': 'kyfw.12306.cn',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+        }
+        return self._request(url, method='POST', data=data, headers=headers)
+
+    def query_no_complete_order(self) -> Dict[str, Any]:
+        url = 'https://kyfw.12306.cn/otn/queryOrder/queryMyOrderNoComplete'
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Referer': 'https://kyfw.12306.cn/otn/view/train_order.html',
+            'Origin': 'https://kyfw.12306.cn',
+            'Host': 'kyfw.12306.cn',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+        }
+        return self._request(url, method='POST', data={'_json_att': ''}, headers=headers)
+
+    def cancel_no_complete_order(self, sequence_no: str) -> Dict[str, Any]:
+        url = 'https://kyfw.12306.cn/otn/queryOrder/cancelNoCompleteMyOrder'
+        data = {
+            'sequence_no': sequence_no,
+            'cancel_flag': 'cancel_order',
+            '_json_att': ''
+        }
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Referer': 'https://kyfw.12306.cn/otn/view/train_order.html',
+            'Origin': 'https://kyfw.12306.cn',
+            'Host': 'kyfw.12306.cn',
+            'X-Requested-With': 'XMLHttpRequest',
             'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
         }
         return self._request(url, method='POST', data=data, headers=headers)
