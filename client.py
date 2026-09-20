@@ -446,6 +446,8 @@ class Client12306:
         Request SMS verification code:
         cast_num is the last 4 digits of ID card or full ID card number.
         """
+        # Ensure login context is pre-initialized
+        self.check_login_verify(username)
         url = 'https://kyfw.12306.cn/passport/web/getMessageCode'
         data = {
             'appid': 'otn',
@@ -459,6 +461,62 @@ class Client12306:
             'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
         }
         return self._request(url, method='POST', data=data, headers=headers)
+
+    def check_login_verify(self, username: str) -> Dict[str, Any]:
+        url = 'https://kyfw.12306.cn/passport/web/checkLoginVerify'
+        data = {
+            'appid': 'otn',
+            'username': username
+        }
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Referer': 'https://kyfw.12306.cn/otn/resources/login.html',
+            'Origin': 'https://kyfw.12306.cn',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+        }
+        return self._request(url, method='POST', data=data, headers=headers)
+
+    def login_with_sms(self, username: str, password: str, sms_code: str) -> Tuple[bool, str]:
+        """
+        Complete login with username, raw password, and SMS code.
+        """
+        try:
+            from .sm4_util import encrypt_12306_password
+        except ImportError:
+            try:
+                from sm4_util import encrypt_12306_password
+            except ImportError:
+                import sys
+                sys.path.append('/opt/data/12306')
+                from sm4_util import encrypt_12306_password
+
+        encrypted_pwd = encrypt_12306_password(password)
+        form_data = {
+            'sessionId': '',
+            'sig': '',
+            'if_check_slide_passcode_token': '',
+            'scene': '',
+            'checkMode': '0',
+            'randCode': sms_code,
+            'username': username,
+            'password': encrypted_pwd,
+            'appid': 'otn'
+        }
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://kyfw.12306.cn/otn/resources/login.html',
+            'Origin': 'https://kyfw.12306.cn',
+            'Host': 'kyfw.12306.cn',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+        }
+        res = self._request('https://kyfw.12306.cn/passport/web/login', method='POST', data=form_data, headers=headers)
+        if not res or res.get('result_code') != 0:
+            msg = res.get('result_message') if res else '登录请求失败'
+            return False, msg
+
+        uamtk = res.get('uamtk')
+        return self.complete_login(uamtk)
 
     def query_order_wait_time(self, repeat_submit_token: str, tour_flag: str = 'dc') -> Dict[str, Any]:
         url = f"https://kyfw.12306.cn/otn/confirmPassenger/queryOrderWaitTime?random={int(time.time()*1000)}&tourFlag={tour_flag}&_json_att=&REPEAT_SUBMIT_TOKEN={repeat_submit_token}"
