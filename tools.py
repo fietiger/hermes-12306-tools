@@ -10,12 +10,14 @@ import base64
 import time
 from typing import Any, Dict, List, Optional
 
-# Add /opt/data/12306 to path for Client12306 and QRManager
-SYS_12306_DIR = "/opt/data/12306"
-if SYS_12306_DIR not in sys.path:
-    sys.path.append(SYS_12306_DIR)
-
-from client import Client12306
+# Prefer relative import if packaged together, otherwise fallback to system path
+try:
+    from .client import Client12306
+except ImportError:
+    SYS_12306_DIR = "/opt/data/12306"
+    if SYS_12306_DIR not in sys.path:
+        sys.path.append(SYS_12306_DIR)
+    from client import Client12306
 
 
 # Global cached client instance
