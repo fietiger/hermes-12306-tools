@@ -525,7 +525,7 @@ class Client12306:
         }
         return self._request(url, method='GET', headers=headers)
 
-    def order_ticket(self, train_code: str, train_date: str, from_station: str, to_station: str, seat_type: str = '二等座', passenger_names: Optional[List[str]] = None) -> Dict[str, Any]:
+    def order_ticket(self, train_code: str, train_date: str, from_station: str, to_station: str, seat_type: str = '二等座', passenger_names: Optional[List[str]] = None, choose_seats: str = '') -> Dict[str, Any]:
         """
         Complete ticket booking workflow for specified train, date, stations, seat, and passengers.
         """
@@ -644,7 +644,8 @@ class Client12306:
             repeat_submit_token=token,
             key_check_is_change=key_check_is_change,
             left_ticket_str=left_ticket_str,
-            train_location=train_location
+            train_location=train_location,
+            choose_seats=choose_seats
         )
         if not res_q or not res_q.get('data', {}).get('submitStatus'):
             err = res_q.get('data', {}).get('errMsg') if res_q else '提交排队失败'
