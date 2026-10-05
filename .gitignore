@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 session_cookies.txt
 .DS_Store
+12306_login_qr.png

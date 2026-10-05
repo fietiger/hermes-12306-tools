@@ -614,7 +614,9 @@ class Client12306:
             return {'success': False, 'message': '未能获取到乘车人列表'}
 
         if not passenger_names:
-            passenger_names = ['程文涛']
+            # Default to the single most recently used passenger rather than
+            # hardcoding a name -- this repo is public.
+            passenger_names = [passengers[0]['passenger_name']]
 
         selected_passengers = [p for p in passengers if p.get('passenger_name') in passenger_names]
         if not selected_passengers:
