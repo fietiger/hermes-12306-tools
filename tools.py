@@ -236,7 +236,7 @@ TRAIN_ORDER_TICKET_SCHEMA = {
         "passenger_names": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "乘车人姓名列表，例如 ['程子越']"
+            "description": "乘车人姓名列表，姓名需与账号常用联系人一致，例如 ['张三']"
         }
     },
     "required": ["train_code", "date", "from_station", "to_station", "seat_type", "passenger_names"],
