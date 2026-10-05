@@ -4,6 +4,7 @@ import json
 import os
 import re
 import ssl
+import sys
 import time
 import urllib.parse
 import urllib.request
@@ -483,12 +484,11 @@ class Client12306:
         try:
             from .sm4_util import encrypt_12306_password
         except ImportError:
-            try:
-                from sm4_util import encrypt_12306_password
-            except ImportError:
-                import sys
-                sys.path.append('/opt/data/12306')
-                from sm4_util import encrypt_12306_password
+            import os as _os
+            _here = _os.path.dirname(_os.path.abspath(__file__))
+            if _here not in sys.path:
+                sys.path.append(_here)
+            from sm4_util import encrypt_12306_password
 
         encrypted_pwd = encrypt_12306_password(password)
         form_data = {

@@ -14,9 +14,9 @@ from typing import Any, Dict, List, Optional
 try:
     from .client import Client12306
 except ImportError:
-    SYS_12306_DIR = "/opt/data/12306"
-    if SYS_12306_DIR not in sys.path:
-        sys.path.append(SYS_12306_DIR)
+    _HERE = os.path.dirname(os.path.abspath(__file__))
+    if _HERE not in sys.path:
+        sys.path.append(_HERE)
     from client import Client12306
 
 

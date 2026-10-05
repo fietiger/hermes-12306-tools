@@ -9,10 +9,10 @@ import sys
 import os
 import datetime
 
-sys.path.append('/opt/data/12306')
-from client import Client12306
-
 CST_TZ = datetime.timezone(datetime.timedelta(hours=8))
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from client import Client12306
 
 def parse_time_str(t_str: str) -> float:
     """Parse format '2026-09-20 20:48:16' (Beijing Time CST UTC+8) to timestamp."""
